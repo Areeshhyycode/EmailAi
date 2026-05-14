@@ -1,8 +1,11 @@
 import Groq from "groq-sdk";
 import type { EmailAnalysis, RawEmail } from "@/types";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+  timeout: 20_000
+});
+const MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
 
 const SYSTEM_PROMPT = `You are an email triage assistant. Analyze an incoming email and return a STRICT JSON object with these exact fields:
 
@@ -22,26 +25,64 @@ Rules:
 - Keep suggestedReply under 120 words and in the same language as the email.
 - Return ONLY the JSON object — no markdown fences, no commentary.`;
 
+function parseRetryAfter(err: any): number {
+  // Groq returns "Please try again in X.XXs" in the error message
+  const msg = String(err?.message ?? err?.error?.message ?? "");
+  const match = msg.match(/try again in ([\d.]+)s/i);
+  if (match) return Math.ceil(parseFloat(match[1]) * 1000) + 500;
+  // Fallback: use Retry-After header if present
+  const header = err?.headers?.["retry-after"];
+  if (header) return Number(header) * 1000;
+  return 0;
+}
+
+async function callGroqWithRetry(payload: any, maxRetries = 2): Promise<any> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await groq.chat.completions.create(payload);
+    } catch (err: any) {
+      const status = err?.status ?? err?.response?.status;
+      if (status === 429 && attempt < maxRetries) {
+        const wait = parseRetryAfter(err) || 1500 * (attempt + 1);
+        console.warn(`[Groq] 429 hit, waiting ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export async function analyzeEmail(email: RawEmail): Promise<EmailAnalysis> {
+  // Aggressively truncate body — many promo/newsletter emails are massive
+  const body = (email.body || email.snippet || "").slice(0, 1000);
+
   const userPrompt = `From: ${email.from}
 Subject: ${email.subject}
-Date: ${email.date}
 
 Body:
-${email.body || email.snippet}`;
+${body}`;
 
-  const completion = await groq.chat.completions.create({
+  const completion = await callGroqWithRetry({
     model: MODEL,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userPrompt }
     ],
     temperature: 0.2,
+    max_tokens: 500,
     response_format: { type: "json_object" }
   });
 
   const content = completion.choices[0]?.message?.content ?? "{}";
-  const parsed = JSON.parse(content);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    // Some models occasionally wrap JSON in markdown fences
+    const match = content.match(/\{[\s\S]*\}/);
+    parsed = match ? JSON.parse(match[0]) : {};
+  }
 
   return {
     category: parsed.category ?? "Other",

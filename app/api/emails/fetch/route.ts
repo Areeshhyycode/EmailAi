@@ -24,27 +24,30 @@ export async function GET(req: Request) {
       return NextResponse.json({ emails, count: emails.length });
     }
 
-    const analyzed: AnalyzedEmail[] = await Promise.all(
-      emails.map(async email => {
-        try {
-          const analysis = await analyzeEmail(email);
-          return { ...email, analysis };
-        } catch (err) {
-          return {
-            ...email,
-            analysis: {
-              category: "Other" as const,
-              sentiment: "neutral" as const,
-              urgency: 1,
-              summary: "Analysis failed",
-              needsReply: false,
-              suggestedReply: null,
-              actionItems: []
-            }
-          };
-        }
-      })
-    );
+    // Sequential processing keeps us under Groq's TPM cap on the free tier.
+    // The Groq client itself retries 429s with backoff (see lib/groq.ts).
+    const analyzed: AnalyzedEmail[] = [];
+
+    for (const email of emails) {
+      try {
+        const analysis = await analyzeEmail(email);
+        analyzed.push({ ...email, analysis });
+      } catch (err: any) {
+        console.error(`[Groq] Failed for "${email.subject}":`, err?.message ?? err);
+        analyzed.push({
+          ...email,
+          analysis: {
+            category: "Other" as const,
+            sentiment: "neutral" as const,
+            urgency: 1,
+            summary: `Analysis failed: ${String(err?.message ?? "unknown error").slice(0, 100)}`,
+            needsReply: false,
+            suggestedReply: null,
+            actionItems: []
+          }
+        });
+      }
+    }
 
     return NextResponse.json({ emails: analyzed, count: analyzed.length });
   } catch (err: any) {

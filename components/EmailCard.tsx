@@ -20,6 +20,7 @@ export function EmailCard({ email, onSent }: Props) {
   const [refineText, setRefineText] = useState("");
   const [busy, setBusy] = useState<null | "send" | "refine" | "task">(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [taskCreated, setTaskCreated] = useState(false);
 
   async function handleRefine() {
     if (!refineText.trim()) return;
@@ -77,6 +78,7 @@ export function EmailCard({ email, onSent }: Props) {
   }
 
   async function handleCreateTask() {
+    if (taskCreated || busy) return;
     setBusy("task");
     setStatus(null);
     try {
@@ -88,6 +90,7 @@ export function EmailCard({ email, onSent }: Props) {
       const data = await res.json();
       if (res.ok) {
         setStatus("Task created in Notion ✓");
+        setTaskCreated(true);
       } else {
         setStatus(data.error ?? "Task creation failed");
       }
@@ -164,11 +167,11 @@ export function EmailCard({ email, onSent }: Props) {
             </button>
             <button
               onClick={handleCreateTask}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              disabled={busy !== null || taskCreated}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy === "task" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListPlus className="h-4 w-4" />}
-              Create Notion task
+              {taskCreated ? "Task created ✓" : "Create Notion task"}
             </button>
           </div>
 
@@ -182,11 +185,11 @@ export function EmailCard({ email, onSent }: Props) {
         <div className="mt-4 flex justify-end">
           <button
             onClick={handleCreateTask}
-            disabled={busy !== null}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            disabled={busy !== null || taskCreated}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy === "task" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ListPlus className="h-3.5 w-3.5" />}
-            Create task
+            {taskCreated ? "Task created ✓" : "Create task"}
           </button>
           {status && <span className="ml-3 self-center text-xs text-slate-600">{status}</span>}
         </div>

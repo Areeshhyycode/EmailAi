@@ -16,7 +16,7 @@ export function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/emails/fetch?limit=10", { cache: "no-store" });
+      const res = await fetch("/api/emails/fetch?limit=5", { cache: "no-store" });
       const data = await res.json();
       if (res.ok) {
         setEmails(data.emails);

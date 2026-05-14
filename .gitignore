@@ -14,5 +14,6 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+.claude/
 
 next-env.d.ts
