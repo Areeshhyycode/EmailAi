@@ -1,173 +1,374 @@
-# InboxAI — AI Email Automation Assistant
+# 📬 InboxAI — AI Email Automation Assistant
 
-Reads your unread Gmail, categorizes each message with Groq (LLaMA 3.3), detects urgency, drafts replies, and pushes action items to Notion. Optional Slack alerts for urgent threads.
+> An end-to-end AI-powered email triage pipeline. Connects to Gmail, uses Groq's LLaMA 3.3 to analyze every unread email — categorizing, scoring urgency, detecting sentiment, drafting replies — then pushes action items to Notion and pings Slack for urgent threads. Built with Next.js 14, TypeScript, and Tailwind CSS.
 
-**Stack:** Next.js 14 (App Router) · TypeScript · Tailwind · NextAuth (Google OAuth) · Groq SDK · Gmail API · Notion · Slack webhooks.
+![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?logo=typescript)
+![Tailwind](https://img.shields.io/badge/Tailwind-3.4-38bdf8?logo=tailwindcss)
+![Groq](https://img.shields.io/badge/Groq-LLaMA_3.3-f55036)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
-## Quick start
+## 🎯 What it does
 
-```powershell
-# 1. Install
-npm install
+Imagine you have 50 unread emails. Manually reading each one, deciding what's important, and drafting replies takes 1-2 hours. **InboxAI cuts that to 30 seconds.**
 
-# 2. Copy env template and fill in keys (see below)
-copy .env.local.example .env.local
+| Task | Without InboxAI | With InboxAI |
+|------|----------------|--------------|
+| Read inbox | Open each email manually | Auto-fetches all unread |
+| Categorize | Read & decide yourself | AI tags: `Work` / `Personal` / `Urgent` / `Newsletter` / `Spam` |
+| Detect urgency | Guess from subject | AI scores 1–10 with reasoning |
+| Detect mood | Read between lines | Sentiment: `positive` / `neutral` / `negative` / `angry` |
+| Write replies | Type from scratch | AI drafts polite, context-aware response |
+| Track action items | Forget by tomorrow | Auto-creates Notion tasks |
+| Get urgent alerts | Check inbox every hour | Slack pings the moment one lands |
 
-# 3. Run
-npm run dev
-# open http://localhost:3000
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     YOU (Browser)                        │
+│                http://localhost:3000                     │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────┐
+│            NEXT.JS APP (App Router, TypeScript)          │
+│                                                          │
+│  Frontend (React) ──── API Routes (Node runtime)         │
+│  ─────────────────────────────────────────────────────   │
+│  • /              landing page                           │
+│  • /login         Google OAuth                           │
+│  • /dashboard     email cards + AI suggestions           │
+│                                                          │
+│  • /api/auth/[...nextauth]    NextAuth handler           │
+│  • /api/emails/fetch          Gmail + Groq pipeline      │
+│  • /api/emails/analyze        on-demand reanalysis       │
+│  • /api/emails/reply          send + mark-as-read        │
+│  • /api/tasks/create          push to Notion             │
+│  • /api/cron/check            background job             │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+        ┌──────────────┼──────────────┬──────────────┐
+        ▼              ▼              ▼              ▼
+   ┌─────────┐   ┌──────────┐   ┌─────────┐   ┌──────────┐
+   │ Gmail   │   │  Groq    │   │ Notion  │   │  Slack   │
+   │   API   │   │LLaMA 3.3 │   │   API   │   │ Webhook  │
+   └─────────┘   └──────────┘   └─────────┘   └──────────┘
+   Read/Send     Think/Decide   Save tasks    Send alerts
 ```
 
 ---
 
-## Getting every API key
+## 🛠️ Tech Stack
 
-### 1. Groq API key (free)
-1. Go to <https://console.groq.com>
-2. Sign in → **API Keys** → **Create API Key**
-3. Paste into `GROQ_API_KEY` in `.env.local`
-4. Models: `llama-3.3-70b-versatile` (default), `llama-3.1-8b-instant`, `mixtral-8x7b-32768`
-
-### 2. Google OAuth + Gmail API (free)
-1. Open <https://console.cloud.google.com>
-2. Create a new project (e.g. "InboxAI")
-3. **APIs & Services → Library** → search **Gmail API** → **Enable**
-4. **OAuth consent screen**:
-   - User type: **External**
-   - Fill app name / support email
-   - **Scopes** → Add: `gmail.readonly`, `gmail.send`, `gmail.modify`, `userinfo.email`, `userinfo.profile`
-   - **Test users** → add your own Gmail address (required while app is in "Testing" mode)
-5. **Credentials → Create Credentials → OAuth client ID**:
-   - Application type: **Web application**
-   - Authorized JavaScript origins: `http://localhost:3000`
-   - Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
-6. Copy **Client ID** → `GOOGLE_CLIENT_ID`
-7. Copy **Client secret** → `GOOGLE_CLIENT_SECRET`
-
-### 3. NextAuth secret
-PowerShell:
-```powershell
-[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
-```
-Or use any 32+ character random string. Paste into `NEXTAUTH_SECRET`.
-
-### 4. Notion integration (free)
-1. Go to <https://www.notion.so/my-integrations>
-2. **New integration** → name it "InboxAI" → Capabilities: Read content, Update content, Insert content
-3. Copy the **Internal Integration Token** → `NOTION_API_KEY`
-4. Create a database in Notion (must have a property called **Name** of type Title)
-5. Open the database → **⋯ menu → Add connections** → pick your integration
-6. Copy the database ID from the URL: `https://notion.so/<workspace>/<DATABASE_ID>?v=...`
-   - The ID is the 32-character string before `?v=`
-   - Paste into `NOTION_DATABASE_ID`
-
-### 5. Slack webhook (optional)
-1. <https://api.slack.com/apps> → **Create New App** → From scratch
-2. Pick a workspace → **Incoming Webhooks** → toggle **On**
-3. **Add New Webhook to Workspace** → choose channel
-4. Copy the webhook URL → `SLACK_WEBHOOK_URL`
-
-Leave blank to disable Slack alerts (the app will skip them silently).
-
-### 6. Cron secret
-Any random string. Used to protect the `/api/cron/check` endpoint.
+| Layer | Tool | Why |
+|-------|------|-----|
+| **Framework** | Next.js 14 (App Router) | Full-stack in one codebase — API routes + React UI |
+| **Language** | TypeScript | Type safety across frontend & backend |
+| **Styling** | Tailwind CSS + lucide-react | Utility-first CSS, clean icons |
+| **Auth** | NextAuth.js | Google OAuth with refresh-token rotation |
+| **LLM** | Groq SDK (LLaMA 3.3 70B) | Fast, free, structured JSON output |
+| **Email** | Google APIs (`gmail.readonly`, `gmail.send`, `gmail.modify`) | Read, send, label messages |
+| **Tasks** | Notion SDK | Structured task storage with blocks |
+| **Alerts** | Slack Incoming Webhooks | Real-time urgent notifications |
+| **Scheduling** | node-cron / Vercel Cron | Background email checks |
 
 ---
 
-## How the app works
+## 🔄 How it works — Real-World Example
 
+You receive this email at 9 AM:
+
+> **From:** boss@company.com
+> **Subject:** URGENT — Client demo Friday
+> "The client moved their demo to Friday 3 PM. Please prepare new slides and share the demo URL by Thursday EOD. This is critical."
+
+### Step 1 · Dashboard fetches unread emails
+Browser → `GET /api/emails/fetch?limit=10`
+Server calls **Gmail API** with `q: "is:unread in:inbox"`.
+
+### Step 2 · Groq analyzes each email in parallel
+For every email, a structured prompt is sent to **LLaMA 3.3 70B**:
+
+```typescript
+groq.chat.completions.create({
+  model: "llama-3.3-70b-versatile",
+  messages: [
+    { role: "system", content: STRICT_JSON_TRIAGE_PROMPT },
+    { role: "user", content: emailText }
+  ],
+  temperature: 0.2,
+  response_format: { type: "json_object" }
+});
 ```
-Browser
-   │
-   ▼
-Next.js (localhost:3000)
-   │
-   ├── /login                → NextAuth → Google OAuth (Gmail scopes)
-   ├── /dashboard            → fetches /api/emails/fetch
-   │
-   ├── /api/emails/fetch     → Gmail API (unread) → Groq (analyze) → JSON
-   ├── /api/emails/analyze   → Groq (refine drafts)
-   ├── /api/emails/reply     → Gmail send + mark-as-read
-   ├── /api/tasks/create     → Notion page in your database
-   └── /api/cron/check       → background batch: analyze + Slack + Notion
-```
 
-**Decision logic** (`/api/cron/check`):
-- Urgency ≥ 8 → Slack ping + star the message in Gmail
-- Category = Work OR urgency ≥ 7 → create Notion task
+Groq returns:
 
----
-
-## Scheduling the cron
-
-The route at `/api/cron/check` needs a Gmail access token. Two options:
-
-**Option A — Vercel Cron (production):**
-Add to `vercel.json`:
 ```json
-{ "crons": [{ "path": "/api/cron/check?token=YOUR_CRON_SECRET", "schedule": "*/10 * * * *" }] }
+{
+  "category": "Urgent",
+  "sentiment": "neutral",
+  "urgency": 9,
+  "summary": "Client demo moved to Friday 3 PM; slides + URL needed by Thursday EOD.",
+  "needsReply": true,
+  "suggestedReply": "Hi, noted. I'll have the new slides and demo URL ready by Thursday EOD.",
+  "actionItems": [
+    "Prepare new client demo slides",
+    "Share demo URL by Thursday EOD",
+    "Demo scheduled for Friday 3 PM"
+  ]
+}
 ```
-You'd extend the auth layer to persist refresh tokens in a DB so the cron can mint a fresh access token.
 
-**Option B — Local node-cron (dev):**
-After signing in via the dashboard, copy your access token from devtools (or run a script that uses your refresh token), then:
-```powershell
-curl "http://localhost:3000/api/cron/check?token=YOUR_CRON_SECRET&accessToken=YOUR_GMAIL_TOKEN&limit=10"
-```
+All 10 emails run **concurrently via `Promise.all`** — total time ≈ 2 seconds, not 20.
 
-For a real demo, the dashboard's "Refresh" button is enough — it triggers the full pipeline using the live session.
+### Step 3 · Dashboard renders cards
+Top stats (`10 unread · 3 urgent · 5 need reply · 4 work`) + an editable card per email.
+
+### Step 4 · You click "Send reply"
+Frontend → `POST /api/emails/reply` → Gmail sends the message and marks the original as read.
+
+### Step 5 · You click "Create Notion task"
+Frontend → `POST /api/tasks/create` → Notion gets a new page in your database with title, summary, action items, and metadata.
+
+### Step 6 · Background cron (optional)
+Every 10 minutes, `/api/cron/check` re-runs the pipeline:
+- **Urgency ≥ 8?** → ping Slack + star the email
+- **Work category or urgency ≥ 7?** → create a Notion task automatically
+
+So urgent emails get triaged even when you're not on the dashboard.
 
 ---
 
-## Project structure
+## ✨ Features
+
+- 🔐 **Google OAuth 2.0** with automatic refresh-token rotation
+- 🤖 **AI categorization** — Work / Personal / Urgent / Newsletter / Promotional / Spam
+- 📊 **Urgency scoring (1–10)** with reasoning
+- 💭 **Sentiment analysis** — positive / neutral / negative / angry
+- ✍️ **AI-drafted replies** you can edit, refine with natural language ("make it shorter and formal"), and send in one click
+- 📝 **Auto-extracted action items** pushed to Notion as structured tasks
+- 🔔 **Slack alerts** for urgent emails (urgency ≥ 8)
+- ⭐ **Auto-star** in Gmail for urgent threads
+- ⏰ **Cron-based background processing** for unattended triage
+- 📱 **Responsive dashboard** with live stats
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+
+- A Google account (for Gmail)
+- A Groq account (free) — <https://console.groq.com>
+- A Notion workspace (free)
+- (Optional) A Slack workspace
+
+### 1. Clone & install
+
+```bash
+git clone https://github.com/Areeshhyycode/EmailAi.git
+cd EmailAi
+npm install --legacy-peer-deps
+```
+
+### 2. Configure environment
+
+Copy the template and fill in your keys:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Then edit `.env.local`:
+
+```env
+# Groq AI (https://console.groq.com/keys)
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+
+# Google OAuth (https://console.cloud.google.com)
+GOOGLE_CLIENT_ID=...apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+
+# NextAuth
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=<run: openssl rand -base64 32>
+
+# Notion (https://www.notion.so/profile/integrations)
+NOTION_API_KEY=ntn_...
+NOTION_DATABASE_ID=<32-char hex from your database URL>
+
+# Slack (optional)
+SLACK_WEBHOOK_URL=
+
+# Cron security
+CRON_SECRET=any-random-string
+```
+
+### 3. Run
+
+```bash
+npm run dev
+```
+
+Open <http://localhost:3000>, click **Connect Gmail**, sign in, and watch the dashboard populate.
+
+---
+
+## 🔑 Getting each API key
+
+<details>
+<summary><strong>Groq API key</strong> (free, 1 min)</summary>
+
+1. Go to <https://console.groq.com/keys>
+2. Sign in → **Create API Key** → name it `inboxai`
+3. Copy the key → paste into `GROQ_API_KEY`
+
+</details>
+
+<details>
+<summary><strong>Google OAuth + Gmail API</strong> (10 min)</summary>
+
+1. Open <https://console.cloud.google.com>
+2. Create a new project (e.g. `InboxAI`)
+3. **APIs & Services → Library** → enable **Gmail API**
+4. **APIs & Services → OAuth consent screen**:
+   - User type: External, fill required fields
+   - Scopes: add `gmail.readonly`, `gmail.send`, `gmail.modify`, `userinfo.email`, `userinfo.profile`, `openid`
+   - Add your Gmail as a **Test user**
+5. **APIs & Services → Credentials → Create OAuth client ID**:
+   - Type: Web application
+   - Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`
+6. Copy **Client ID** and **Client secret** into `.env.local`
+
+</details>
+
+<details>
+<summary><strong>Notion integration + database</strong> (3 min)</summary>
+
+1. Go to <https://www.notion.so/profile/integrations>
+2. **New integration** → name it `InboxAI`, type Internal
+3. Copy the secret → `NOTION_API_KEY`
+4. In Notion, create a new database (full page) — keep the default `Name` (Title) column
+5. Open the database → **⋯ → Connections → + Add connections** → pick your integration
+6. Copy the 32-char hex from the URL (before `?v=`) → `NOTION_DATABASE_ID`
+
+</details>
+
+<details>
+<summary><strong>Slack webhook</strong> (optional)</summary>
+
+1. <https://api.slack.com/apps> → Create New App → From scratch
+2. Pick a workspace → **Incoming Webhooks** → On
+3. **Add New Webhook to Workspace** → choose a channel
+4. Copy the URL → `SLACK_WEBHOOK_URL`
+
+Leave blank to disable Slack alerts (the app skips them silently).
+
+</details>
+
+---
+
+## 📁 Project structure
 
 ```
 .
 ├── app/
 │   ├── api/
 │   │   ├── auth/[...nextauth]/route.ts   NextAuth handler
-│   │   ├── emails/{fetch,analyze,reply}/route.ts
-│   │   ├── tasks/create/route.ts
-│   │   └── cron/check/route.ts
-│   ├── dashboard/page.tsx                Main UI
+│   │   ├── emails/
+│   │   │   ├── fetch/route.ts            Gmail + Groq pipeline
+│   │   │   ├── analyze/route.ts          on-demand reanalysis
+│   │   │   └── reply/route.ts            send + mark-as-read
+│   │   ├── tasks/create/route.ts         push to Notion
+│   │   └── cron/check/route.ts           background job
+│   ├── dashboard/page.tsx                authenticated UI
 │   ├── login/page.tsx                    Google sign-in
-│   ├── page.tsx                          Landing
+│   ├── page.tsx                          landing
 │   ├── layout.tsx
 │   └── globals.css
 ├── components/
-│   ├── Dashboard.tsx
-│   ├── EmailCard.tsx
-│   ├── CategoryBadge.tsx
-│   └── Providers.tsx
+│   ├── Dashboard.tsx                     stats + email list
+│   ├── EmailCard.tsx                     per-email AI card
+│   ├── CategoryBadge.tsx                 category/sentiment/urgency pills
+│   └── Providers.tsx                     NextAuth SessionProvider
 ├── lib/
-│   ├── auth.ts          NextAuth config + token refresh
-│   ├── gmail.ts         fetch / send / label
-│   ├── groq.ts          analyze + refine
-│   ├── notion.ts        task creation
-│   └── slack.ts         urgent webhook
+│   ├── auth.ts                           NextAuth + token refresh
+│   ├── gmail.ts                          fetch / send / label
+│   ├── groq.ts                           analyze + refine drafts
+│   ├── notion.ts                         create task pages
+│   └── slack.ts                          urgent webhook
 ├── types/
-│   ├── index.ts         shared types
-│   └── next-auth.d.ts   session augmentation
-└── .env.local.example
+│   ├── index.ts                          shared types
+│   └── next-auth.d.ts                    session augmentation
+├── .env.local.example
+├── next.config.mjs
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
 ```
 
 ---
 
-## Troubleshooting
+## 💡 What this project demonstrates
 
-- **"Access blocked: This app's request is invalid"** — redirect URI mismatch. It must be exactly `http://localhost:3000/api/auth/callback/google`.
-- **"App is not verified"** — normal for Testing mode. Click **Advanced → Go to InboxAI (unsafe)** during dev.
-- **Notion "object_not_found"** — you forgot to share the database with the integration (Add connections).
-- **Groq 401** — bad API key, or you regenerated it but didn't restart `npm run dev`.
-- **Empty inbox in dashboard** — your inbox might genuinely be zero. Try sending yourself an unread test email.
+| Skill | Where in the code |
+|-------|-------------------|
+| **OAuth 2.0 + token refresh** | [lib/auth.ts](lib/auth.ts) — handles `expires_at`, refresh flow |
+| **Async pipelines** | `Promise.all` in [app/api/emails/fetch/route.ts](app/api/emails/fetch/route.ts) |
+| **Prompt engineering** | Strict JSON schema in [lib/groq.ts](lib/groq.ts) |
+| **External API orchestration** | 4 APIs working in concert |
+| **Graceful failure** | Per-email try/catch — one bad email never breaks the batch |
+| **Secured background jobs** | `CRON_SECRET` gate on `/api/cron/check` |
+| **Full-stack TypeScript** | Shared types in [types/index.ts](types/index.ts) used by both client and server |
+| **Server/Client component split** | Server-side data fetching + client-side interactivity |
 
 ---
 
-## Security notes
+## 🗺️ Roadmap
 
-- Tokens live in the encrypted JWT session — they never touch the browser.
-- `.env.local` is gitignored. **Never** commit it.
-- The `/api/cron/check` route is gated by `CRON_SECRET`.
-- For production: persist refresh tokens server-side (Redis / Postgres) and use them in the cron instead of passing access tokens.
+- [ ] Persist refresh tokens in a database (currently in-memory JWT)
+- [ ] Multi-account support (manage multiple Gmail inboxes)
+- [ ] Voice summary of daily inbox (ElevenLabs TTS)
+- [ ] Smart filtering rules (auto-archive promos, route invoices to a folder)
+- [ ] Vector embeddings + similarity search across email history
+- [ ] Per-user analytics: response time, top senders, sentiment trends
+
+---
+
+## 🔒 Security notes
+
+- `.env.local` is gitignored — never commit your secrets.
+- Access tokens live only in the encrypted JWT session, never in browser localStorage.
+- The `/api/cron/check` route requires `CRON_SECRET` query token.
+- For production, persist refresh tokens server-side (Redis / Postgres) and rotate access tokens in the cron rather than passing them in the URL.
+
+---
+
+## 🐛 Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `Access blocked: This app's request is invalid` | The redirect URI must be **exactly** `http://localhost:3000/api/auth/callback/google` |
+| `Google hasn't verified this app` | Normal in Testing mode → click **Advanced → Go to InboxAI (unsafe)** |
+| Notion: `object_not_found` | You forgot to **add the integration as a connection** on the database |
+| Groq: 401 Unauthorized | Bad API key, or you regenerated it and didn't restart `npm run dev` |
+| Dashboard empty | Either your inbox truly has no unread, or the token expired — sign out and back in |
+| `npm install` peer-dep error | Run `npm install --legacy-peer-deps` |
+
+---
+
+## 📄 License
+
+MIT © [Areesha](https://github.com/Areeshhyycode)
+
+---
+
+<p align="center">
+  Built with ❤️ for inboxes that never sleep.
+</p>
