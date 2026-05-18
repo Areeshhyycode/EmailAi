@@ -37,7 +37,8 @@ async function runCron(accessToken: string, limit: number) {
 
       let notionId: string | null = null;
       if (notionEnabled() && (analysis.category === "Work" || analysis.urgency >= 7)) {
-        notionId = await createTask(analyzed);
+        const task = await createTask(analyzed);
+        notionId = task?.pageId ?? null;
       }
 
       results.push({
