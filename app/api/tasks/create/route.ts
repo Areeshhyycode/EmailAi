@@ -23,8 +23,11 @@ export async function POST(req: Request) {
   }
 
   try {
-    const pageId = await createTask(email);
-    return NextResponse.json({ pageId });
+    const result = await createTask(email);
+    if (!result) {
+      return NextResponse.json({ error: "Notion not configured" }, { status: 400 });
+    }
+    return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Failed to create task" },
