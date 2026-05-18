@@ -46,3 +46,17 @@ export function UrgencyBadge({ score }: { score: number }) {
     </span>
   );
 }
+
+const PRIORITY_STYLE: Record<"High" | "Medium" | "Low", string> = {
+  High: "bg-red-50 text-red-700 ring-1 ring-red-200",
+  Medium: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  Low: "bg-slate-50 text-slate-600 ring-1 ring-slate-200"
+};
+
+export function PriorityBadge({ priority }: { priority: "High" | "Medium" | "Low" }) {
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${PRIORITY_STYLE[priority]}`}>
+      {priority} priority
+    </span>
+  );
+}
